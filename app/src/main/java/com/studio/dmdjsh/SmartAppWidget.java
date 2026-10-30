@@ -1,4 +1,4 @@
-package com.studio.dmtest3;
+package com.studio.dmdjsh;
 
 import android.app.PendingIntent;
 import android.appwidget.AppWidgetManager;
@@ -28,7 +28,7 @@ public class SmartAppWidget extends AppWidgetProvider {
     public static void updateSingleWidget(Context context, AppWidgetManager appWidgetManager, int appWidgetId) {
         try {
             SharedPreferences prefs = context.getSharedPreferences("af_widget_prefs", Context.MODE_PRIVATE);
-            String title = prefs.getString("title", "Dmtest3");
+            String title = prefs.getString("title", "Medii");
             String body = prefs.getString("body", "");
             String primaryHex = prefs.getString("primaryColor", "#458AFF");
 
