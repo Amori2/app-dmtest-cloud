@@ -1,9 +1,9 @@
 plugins { id 'com.android.application' }
 android {
-  namespace 'com.studio.dmtest'
+  namespace 'com.studio.dmtest2'
   compileSdk 34
   defaultConfig {
-    applicationId "com.studio.dmtest"
+    applicationId "com.studio.dmtest2"
     minSdk 23
     targetSdk 34
     versionCode 1
