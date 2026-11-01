@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="com.studio.dmdjsh">
+    package="com.studio.dmtest">
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
@@ -12,7 +12,7 @@
     <application
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
-        android:label="Medii"
+        android:label="Dmtest"
         android:usesCleartextTraffic="true"
         android:hardwareAccelerated="true"
         android:supportsRtl="true"
@@ -28,16 +28,6 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-        <receiver
-            android:name=".SmartAppWidget"
-            android:exported="true"
-            android:label="Medii">
-            <intent-filter>
-                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
-            </intent-filter>
-            <meta-data
-                android:name="android.appwidget.provider"
-                android:resource="@xml/smart_widget_info" />
-        </receiver>
+        
     </application>
 </manifest>
