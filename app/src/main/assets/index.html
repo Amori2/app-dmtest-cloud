@@ -78,7 +78,7 @@ body > *:not(#af-native-splash-overlay) { opacity: 0 !important; visibility: hid
     var badge = document.createElement('span');
     badge.id = 'af-injected-version-badge';
     badge.dir = 'ltr';
-    badge.textContent = "v2.0.0";
+    badge.textContent = "v3.0.0";
     var shapeCss = "circle" === 'circle'
       ? 'min-width:26px;height:26px;padding:0 6px;border-radius:999px;'
       : ("circle" === 'pill' ? 'height:22px;padding:0 9px;border-radius:999px;' : 'height:23px;padding:0 8px;border-radius:7px;');
@@ -1013,6 +1013,35 @@ body > *:not(#af-native-splash-overlay) { opacity: 0 !important; visibility: hid
   </div>
 
   <!-- ===================================================================== -->
+  <!-- MODAL 2B: LONG-PRESS LINK / VIDEO ACTION MENU (Open in Background Tab)-->
+  <!-- ===================================================================== -->
+  <div id="modalLongPressMenu" class="fixed inset-0 z-50 hidden bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4">
+    <div class="surface-card w-full max-w-sm rounded-t-3xl sm:rounded-3xl p-4 shadow-2xl space-y-2.5">
+      <div class="flex items-center justify-between gap-2 border-b border-subtle pb-2">
+        <div class="min-w-0 flex-1">
+          <h3 id="lpMenuTitle" class="font-extrabold text-xs sm:text-sm truncate">خيارات الرابط / الفيديو</h3>
+          <p id="lpMenuUrl" class="text-[10px] text-subtle font-mono truncate" dir="ltr"></p>
+        </div>
+        <button type="button" onclick="closeLongPressModal()" class="w-8 h-8 rounded-xl surface-input text-xs font-bold shrink-0">✕</button>
+      </div>
+      <div class="space-y-2 pt-1">
+        <button type="button" onclick="handleLongPressOption('bg_tab')" class="w-full py-3 px-3.5 rounded-2xl btn-primary text-xs font-extrabold flex items-center justify-between">
+          <span>فتح في تبويب بالخلفية (Open in background tab)</span>
+          <span>↗</span>
+        </button>
+        <button type="button" onclick="handleLongPressOption('fg_tab')" class="w-full py-2.5 px-3.5 rounded-2xl surface-input text-xs font-bold flex items-center justify-between">
+          <span>فتح في تبويب جديد الآن (Open in new tab)</span>
+          <span>＋</span>
+        </button>
+        <button type="button" onclick="handleLongPressOption('copy')" class="w-full py-2.5 px-3.5 rounded-2xl surface-input text-xs font-bold flex items-center justify-between">
+          <span>نسخ الرابط (Copy link)</span>
+          <span>📋</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================================================================== -->
   <!-- MODAL 3: SHIELD (AD & TRACKER BLOCKER)                                -->
   <!-- ===================================================================== -->
   <div id="modalShield" class="fixed inset-0 z-50 hidden bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
@@ -1224,6 +1253,8 @@ body > *:not(#af-native-splash-overlay) { opacity: 0 !important; visibility: hid
       browsingHistory: [],
       currentPageRealTitle: '',
       hlsSavedSessions: {},
+      hlsJobsById: {},
+      longPressTarget: null,
 
       detectedMedia: null,
       activePlaybackQuality: '360p',
@@ -1536,8 +1567,12 @@ body > *:not(#af-native-splash-overlay) { opacity: 0 !important; visibility: hid
         return;
       }
       STATE.currentPageRealTitle = '';
+      STATE.scannedMediaItems = [];
+      updateFloatingButtonVisibility();
       var curTab = getCurrentTab();
       if (curTab) {
+        curTab.scannedMediaItems = [];
+        curTab.pageRealTitle = '';
         if (!Array.isArray(curTab.history)) curTab.history = [];
         if (!isBackNavigation && curTab.url && curTab.url !== url) {
           curTab.history.push(curTab.url);
@@ -2597,7 +2632,7 @@ body > *:not(#af-native-splash-overlay) { opacity: 0 !important; visibility: hid
         '}catch(e){}}' +
         'scanDom();setInterval(scanDom,2000);' +
         'document.addEventListener(\'loadedmetadata\',scanDom,true);' +
-        'document.addEventListener(\'play\',scanDom,true);' +
+        'document.addEventListener(\'play\',scanDom,true);document.addEventListener(\'contextmenu\',function(ev){try{var t=ev.target;if(!t||!t.closest)return;var v=t.closest(\'video,audio\');var a=t.closest(\'a[href]\');var u=\'\';var lb=\'\';if(v){u=v.currentSrc||v.src||v.getAttribute(\'src\')||BASE;lb=getBestPageTitle()||\'Video\';}else if(a){var h=a.getAttribute(\'href\')||\'\';if(h&&h.charAt(0)!==\'#\'&&!/^javascript:/i.test(h)){u=new URL(h,BASE).href;lb=(a.textContent||a.title||\'\').trim();}}if(u&&/^https?:\\/\\//i.test(u)){ev.preventDefault();parent.postMessage({type:\'SNAP1DM_LONG_PRESS\',url:u,title:lb},\'*\');}}catch(e){}},true);' +
         'var origFetch=window.fetch;if(origFetch){window.fetch=function(input,init){try{var u=typeof input===\'string\'?input:(input&&input.url);if(u){if(isAd(u)){reportAdBlocked(1);return Promise.resolve(new Response(\'\',{status:204}));}if(/\\.(mp4|webm|mkv|mp3|m4a|m3u8|mpd)(\\?|$)/i.test(u))send(u,\'\',document.title);}}catch(e){}return origFetch.apply(this,arguments);};}' +
         'var origOpen=XMLHttpRequest.prototype.open;var origSend=XMLHttpRequest.prototype.send;if(origOpen&&origSend){XMLHttpRequest.prototype.open=function(m,u){this._blk=false;try{if(u){var su=String(u);if(isAd(su)){this._blk=true;reportAdBlocked(1);}else if(/\\.(mp4|webm|mkv|mp3|m4a|m3u8|mpd)(\\?|$)/i.test(su))send(su,\'\',document.title);}}catch(e){}return origOpen.apply(this,arguments);};XMLHttpRequest.prototype.send=function(){if(this._blk)return;return origSend.apply(this,arguments);};}' +
       '})();<\/script>';
@@ -2658,7 +2693,7 @@ body > *:not(#af-native-splash-overlay) { opacity: 0 !important; visibility: hid
     }
 
     function isAnyModalSheetOpenNow() {
-      var modalIds = ['modalDetectedMedia', 'modalHlsDownloader', 'modalDownloadSheet', 'modalFolder', 'modalTabs', 'modalShield'];
+      var modalIds = ['modalDetectedMedia', 'modalHlsDownloader', 'modalDownloadSheet', 'modalFolder', 'modalTabs', 'modalShield', 'modalLongPressMenu'];
       for (var i = 0; i < modalIds.length; i++) {
         var el = document.getElementById(modalIds[i]);
         if (el && !el.classList.contains('hidden')) return true;
@@ -2680,29 +2715,52 @@ body > *:not(#af-native-splash-overlay) { opacity: 0 !important; visibility: hid
     }
     window.syncNativeBrowserVisibility = syncNativeBrowserVisibility;
 
+    // Called by MainActivity.java when BrowserWebView starts loading a new page URL
+    window.onNativeBrowserPageStarted = function(newPageUrl) {
+      var curT = getCurrentTab();
+      if (curT && curT.url && newPageUrl && curT.url.split('#')[0] !== newPageUrl.split('#')[0]) {
+        STATE.scannedMediaItems = [];
+        curT.scannedMediaItems = [];
+        STATE.currentPageRealTitle = '';
+        curT.pageRealTitle = '';
+        updateFloatingButtonVisibility();
+      }
+    };
+
     // Native Bridge Callback 1: Called by MainActivity.java when shouldInterceptRequest / onLoadResource sniffs any .m3u8, .mpd, .mp4, .webm, .mkv, .mp3, .m4a
-    window.onNativeMediaSniffed = function(mediaUrl, pageTitle, qualityHint) {
+    window.onNativeMediaSniffed = function(mediaUrl, pageTitle, qualityHint, sourcePageUrl) {
       if (!mediaUrl) return;
-      if (pageTitle) {
-        var cleanT = cleanVideoTitleText(pageTitle);
-        if (cleanT) {
-          STATE.currentPageRealTitle = cleanT;
-          var curT = getCurrentTab();
-          if (curT) {
-            curT.title = cleanT;
-            syncTopBarTabs();
-            persistOpenTabsToStorage();
-            if (!curT.incognito && curT.url) updateBrowsingHistoryTitle(curT.url, cleanT);
-          }
+      var curT = getCurrentTab();
+      // Ignore delayed network callbacks from a previous page if the user already navigated to a different domain/page
+      if (sourcePageUrl && curT && curT.url && /^https?:\/\//i.test(curT.url)) {
+        try {
+          var srcHost = new URL(sourcePageUrl).hostname.replace(/^www\./, '');
+          var curHost = new URL(curT.url).hostname.replace(/^www\./, '');
+          if (srcHost && curHost && srcHost !== curHost) return;
+        } catch (e) {}
+      }
+      var resolvedTitle = cleanVideoTitleText(pageTitle) || cleanVideoTitleText(STATE.currentPageRealTitle) || (curT && cleanVideoTitleText(curT.pageRealTitle)) || '';
+      if (resolvedTitle) {
+        STATE.currentPageRealTitle = resolvedTitle;
+        if (curT) {
+          curT.pageRealTitle = resolvedTitle;
+          curT.title = resolvedTitle;
+          syncTopBarTabs();
+          persistOpenTabsToStorage();
+          if (!curT.incognito && curT.url) updateBrowsingHistoryTitle(curT.url, resolvedTitle);
         }
       }
       var mapByUrl = {};
       for (var i = 0; i < STATE.scannedMediaItems.length; i++) {
         mapByUrl[STATE.scannedMediaItems[i].url] = true;
+        if (STATE.scannedMediaItems[i].dedupeKey) mapByUrl[STATE.scannedMediaItems[i].dedupeKey] = true;
       }
-      var item = classifyMediaUrl(mediaUrl, STATE.currentPageRealTitle || pageTitle || 'Video', qualityHint || '', '', true);
+      var item = classifyMediaUrl(mediaUrl, resolvedTitle || 'Video', qualityHint || '', '', true);
       if (item) {
+        if (resolvedTitle) item.lockedTitle = resolvedTitle;
+        item.sourcePageUrl = sourcePageUrl || (curT && curT.url) || '';
         addScannedMediaItem(item, mapByUrl);
+        if (curT) curT.scannedMediaItems = STATE.scannedMediaItems.slice();
         updateFloatingButtonVisibility();
         var modal = document.getElementById('modalDetectedMedia');
         if (modal && !modal.classList.contains('hidden')) {
@@ -3733,8 +3791,10 @@ body > *:not(#af-native-splash-overlay) { opacity: 0 !important; visibility: hid
     }, 1000);
 
     function toggleTaskPause(taskId) {
-      if (STATE.hlsJob && STATE.hlsJob.taskId === taskId) {
-        if (STATE.hlsJob.active) {
+      var targetHlsJob = (STATE.hlsJobsById && STATE.hlsJobsById[taskId]) || ((STATE.hlsJob && STATE.hlsJob.taskId === taskId) ? STATE.hlsJob : null);
+      if (targetHlsJob) {
+        STATE.hlsJob = targetHlsJob;
+        if (targetHlsJob.active) {
           pauseActiveHlsDownload();
         } else {
           openHlsModal();
@@ -4083,7 +4143,76 @@ body > *:not(#af-native-splash-overlay) { opacity: 0 !important; visibility: hid
     }
     window.openUrlInNewInternalTab = openUrlInNewInternalTab;
 
+    // Problem 3: Open a link or video in a background tab without leaving the current tab!
+    function openUrlInBackgroundTab(targetUrl, customTitle, autoScanInBg) {
+      if (!targetUrl || !/^https?:\/\//i.test(targetUrl)) return;
+      if (STATE.adBlockEnabled && isAdOrTrackerUrl(targetUrl)) {
+        incrementBlockedAdsCount(1);
+        return;
+      }
+      var cur = getCurrentTab();
+      var id = 'tab-bg-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
+      var cleanT = cleanVideoTitleText(customTitle) || targetUrl.replace(/^https?:\/\/(www\.)?/, '').slice(0, 36) || 'صفحة بالخلفية';
+      var bgTab = {
+        id: id,
+        title: cleanT,
+        url: targetUrl,
+        incognito: !!(cur && cur.incognito),
+        history: [],
+        openerTabId: STATE.activeTabId || '',
+        scannedMediaItems: [],
+        pageRealTitle: cleanVideoTitleText(customTitle) || ''
+      };
+      STATE.tabs.push(bgTab);
+      syncTopBarTabs();
+      persistOpenTabsToStorage();
+      if (!bgTab.incognito) {
+        recordBrowsingHistoryEntry(targetUrl, cleanT);
+      }
+      notify('تم الفتح في تبويب بالخلفية (' + STATE.tabs.length + ' صفحات)');
+    }
+    window.openUrlInBackgroundTab = openUrlInBackgroundTab;
+
+    function openLongPressModal(targetUrl, labelTitle) {
+      if (!targetUrl || !/^https?:\/\//i.test(targetUrl)) return;
+      STATE.longPressTarget = { url: targetUrl, title: labelTitle || '' };
+      var tEl = document.getElementById('lpMenuTitle');
+      var uEl = document.getElementById('lpMenuUrl');
+      if (tEl) tEl.textContent = labelTitle || 'خيارات الرابط / الفيديو';
+      if (uEl) uEl.textContent = targetUrl;
+      document.getElementById('modalLongPressMenu').classList.remove('hidden');
+      syncNativeBrowserVisibility();
+    }
+    window.openLongPressModal = openLongPressModal;
+
+    function closeLongPressModal() {
+      document.getElementById('modalLongPressMenu').classList.add('hidden');
+      syncNativeBrowserVisibility();
+    }
+    window.closeLongPressModal = closeLongPressModal;
+
+    function handleLongPressOption(action) {
+      var tgt = STATE.longPressTarget;
+      closeLongPressModal();
+      if (!tgt || !tgt.url) return;
+      if (action === 'bg_tab') {
+        openUrlInBackgroundTab(tgt.url, tgt.title, false);
+      } else if (action === 'fg_tab') {
+        openUrlInNewInternalTab(tgt.url);
+      } else if (action === 'copy') {
+        fallbackCopyLink(tgt.url);
+      }
+    }
+    window.handleLongPressOption = handleLongPressOption;
+
     function switchToTab(id) {
+      // Save current tab's detected media & real title before switching
+      var prevTab = getCurrentTab();
+      if (prevTab) {
+        prevTab.scannedMediaItems = (STATE.scannedMediaItems || []).slice();
+        prevTab.pageRealTitle = STATE.currentPageRealTitle || prevTab.title || '';
+      }
+
       STATE.activeTabId = id;
       closeTabsModal();
       var cur = getCurrentTab();
@@ -4095,7 +4224,15 @@ body > *:not(#af-native-splash-overlay) { opacity: 0 !important; visibility: hid
         document.getElementById('browserStartScreen').classList.add('hidden');
         document.getElementById('browserActiveWorkspace').classList.remove('hidden');
         navigateToUrl(cur.url, true);
+        if (Array.isArray(cur.scannedMediaItems) && cur.scannedMediaItems.length > 0) {
+          STATE.scannedMediaItems = cur.scannedMediaItems.slice();
+          STATE.currentPageRealTitle = cur.pageRealTitle || cur.title || '';
+          updateFloatingButtonVisibility();
+        }
       } else {
+        STATE.scannedMediaItems = [];
+        STATE.currentPageRealTitle = '';
+        updateFloatingButtonVisibility();
         document.getElementById('topOmniInput').value = '';
         goHomeStartPage();
       }
@@ -4877,11 +5014,12 @@ body > *:not(#af-native-splash-overlay) { opacity: 0 !important; visibility: hid
         filtered.push(it);
       }
 
-      // Refresh file names with the latest real page title if available
+      // Only set fileName from currentPageRealTitle if the item does not already have a lockedTitle from its own page!
       var bestTitle = cleanVideoTitleText(STATE.currentPageRealTitle);
       if (bestTitle) {
         for (var k = 0; k < filtered.length; k++) {
-          if (filtered[k].ext && (!filtered[k].streamRefType)) {
+          if (filtered[k].ext && !filtered[k].streamRefType && !filtered[k].lockedTitle) {
+            filtered[k].lockedTitle = bestTitle;
             filtered[k].fileName = bestTitle + '.' + filtered[k].ext;
           }
         }
@@ -4906,6 +5044,11 @@ body > *:not(#af-native-splash-overlay) { opacity: 0 !important; visibility: hid
 
         if (data.type === 'SNAP1DM_AD_BLOCKED') {
           incrementBlockedAdsCount(data.count || 1);
+          return;
+        }
+
+        if (data.type === 'SNAP1DM_LONG_PRESS' && data.url) {
+          openLongPressModal(data.url, data.title || '');
           return;
         }
 
@@ -6248,17 +6391,16 @@ body > *:not(#af-native-splash-overlay) { opacity: 0 !important; visibility: hid
       var it = STATE.scannedMediaItems[idx];
       if (!it || !it.url) return;
 
-      // If an HLS download is already active, just open the modal
-      if (STATE.hlsJob && STATE.hlsJob.active) {
+      // Only open existing modal if the EXACT same stream URL is already actively downloading
+      if (STATE.hlsJob && STATE.hlsJob.active && (STATE.hlsJob.playlistUrl === it.url || STATE.hlsJob.variantUrl === it.url)) {
+        closeDetectedMediaSheet();
         openHlsModal();
-        notify('An HLS stream download is currently in progress');
         return;
       }
 
-      // Problem 1: If the same M3U8 URL (or variant URL) has a paused/stopped session in memory, restore & show Resume!
-      var savedJob = (STATE.hlsSavedSessions && STATE.hlsSavedSessions[it.url]) ||
-                     ((STATE.hlsJob && (STATE.hlsJob.playlistUrl === it.url || STATE.hlsJob.variantUrl === it.url)) ? STATE.hlsJob : null);
-      if (savedJob && savedJob.segmentUrls && savedJob.segmentUrls.length > 0 && savedJob.downloadedSegments > 0 && savedJob.downloadedSegments < savedJob.totalSegments && savedJob.status !== 'Completed') {
+      // If the exact same M3U8 URL has a paused/stopped session in memory, restore & show Resume
+      var savedJob = (STATE.hlsSavedSessions && STATE.hlsSavedSessions[it.url]) || null;
+      if (savedJob && !savedJob.active && savedJob.segmentUrls && savedJob.segmentUrls.length > 0 && savedJob.downloadedSegments > 0 && savedJob.downloadedSegments < savedJob.totalSegments && savedJob.status !== 'Completed') {
         STATE.hlsJob = savedJob;
         syncHlsMemorySession(STATE.hlsJob);
         closeDetectedMediaSheet();
@@ -6276,7 +6418,8 @@ body > *:not(#af-native-splash-overlay) { opacity: 0 !important; visibility: hid
 
       closeDetectedMediaSheet();
 
-      var baseTitle = resolveOriginalVideoTitle(it);
+      // Use the item's lockedTitle from its own page first so Video 2 never gets Video 1's title or vice versa!
+      var baseTitle = cleanVideoTitleText(it.lockedTitle) || resolveOriginalVideoTitle(it);
       STATE.hlsJob = {
         active: false,
         aborted: false,
@@ -6557,15 +6700,19 @@ body > *:not(#af-native-splash-overlay) { opacity: 0 !important; visibility: hid
       job.lastFailedSegmentIndex = -1;
       job.abortControllers = [];
 
-      // Refresh baseTitle with latest resolved page title
-      var freshTitle = resolveOriginalVideoTitle(null);
-      if (freshTitle && freshTitle !== 'Video') {
-        job.baseTitle = freshTitle;
+      // Keep job.baseTitle locked to the video's page title; only fallback if empty
+      if (!job.baseTitle || job.baseTitle === 'Video' || job.baseTitle === 'hls_video') {
+        var freshTitle = resolveOriginalVideoTitle(null);
+        if (freshTitle && freshTitle !== 'Video') {
+          job.baseTitle = freshTitle;
+        }
       }
 
-      // Create a corresponding task in STATE.downloads
-      var taskId = 'dl-hls-' + Date.now();
+      // Create a corresponding task in STATE.downloads (supports multiple simultaneous HLS downloads!)
+      var taskId = 'dl-hls-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
       job.taskId = taskId;
+      if (!STATE.hlsJobsById) STATE.hlsJobsById = {};
+      STATE.hlsJobsById[taskId] = job;
       var hlsTask = {
         id: taskId,
         isHlsStream: true,
@@ -6607,8 +6754,113 @@ body > *:not(#af-native-splash-overlay) { opacity: 0 !important; visibility: hid
       setHlsStatusUI('Downloading', 0, '', '');
       showHlsModalState('hlsProgressSection');
 
+      // Problem 1: If running inside App Factory V5 APK with startNativeHlsJob, run the download on a Native Java Thread inside ForegroundService (works 100% when screen is locked or in another app!)
+      if (window.AndroidBridge && typeof window.AndroidBridge.startNativeHlsJob === 'function') {
+        try {
+          var subFolder = (job.targetFolder && job.targetFolder.isCustom && job.targetFolder.folderName && job.targetFolder.folderName !== 'Downloads')
+            ? job.targetFolder.folderName
+            : '';
+          var startedNative = window.AndroidBridge.startNativeHlsJob(
+            taskId,
+            JSON.stringify(job.segmentUrls),
+            job.initMapUrl || '',
+            hlsTask.fileName,
+            subFolder
+          );
+          if (startedNative) {
+            job.isNativeJavaJob = true;
+            job.active = true;
+            return;
+          }
+        } catch (e) {}
+      }
+
       runHlsSegmentWorkers();
     }
+
+    // Native Java HLS Background Downloader progress listener (receives updates even while screen was locked!)
+    window.onNativeHlsJobProgress = function(jobId, doneSegs, totalSegs, downloadedBytes, speedBps, status, savedResult) {
+      var job = (STATE.hlsJobsById && STATE.hlsJobsById[jobId]) || (STATE.hlsJob && STATE.hlsJob.taskId === jobId ? STATE.hlsJob : null);
+      if (!job) return;
+      var hlsTask = job.hlsTask;
+      var isCurrentModalJob = !!(STATE.hlsJob && STATE.hlsJob.taskId === jobId);
+
+      job.downloadedSegments = doneSegs || 0;
+      job.totalSegments = totalSegs || job.totalSegments || 1;
+      job.downloadedBytes = downloadedBytes || 0;
+      job.lastSuccessfulSegmentIndex = (doneSegs || 0) - 1;
+
+      if (hlsTask) {
+        hlsTask.downloadedBytes = job.downloadedBytes;
+        hlsTask.totalBytes = doneSegs > 0 ? Math.round((job.downloadedBytes / doneSegs) * job.totalSegments) : 0;
+        hlsTask.realSpeedBps = speedBps || 0;
+        var pct = Math.min(99, Math.round((job.downloadedSegments / Math.max(1, job.totalSegments)) * 100));
+        hlsTask.muxProgressPct = pct;
+        for (var t = 0; t < hlsTask.threadProgress.length; t++) hlsTask.threadProgress[t] = pct;
+      }
+
+      if (status === 'Downloading') {
+        job.active = true;
+        job.status = 'Downloading';
+        if (hlsTask) hlsTask.status = 'active';
+        if (isCurrentModalJob) {
+          updateHlsProgressUI(job.downloadedSegments, job.totalSegments);
+          setHlsStatusUI('Downloading', 0, '', '');
+        }
+      } else if (status === 'Paused') {
+        job.active = false;
+        job.status = 'Paused';
+        if (hlsTask) { hlsTask.status = 'paused'; hlsTask.realSpeedBps = 0; }
+        if (isCurrentModalJob) {
+          updateHlsProgressUI(job.downloadedSegments, job.totalSegments);
+          setHlsStatusUI('Paused', 0, 'Download paused at segment ' + job.downloadedSegments + ' of ' + job.totalSegments + '.', 'Tap Resume to continue from segment ' + (job.downloadedSegments + 1) + '.');
+        }
+      } else if (status === 'Failed') {
+        job.active = false;
+        job.status = 'Failed';
+        if (hlsTask) { hlsTask.status = 'paused'; hlsTask.realSpeedBps = 0; }
+        if (isCurrentModalJob) {
+          updateHlsProgressUI(job.downloadedSegments, job.totalSegments);
+          setHlsStatusUI('Failed', 3, 'Download stopped. Tap Resume to continue.', 'Tap Resume to continue from segment ' + (job.downloadedSegments + 1) + ' of ' + job.totalSegments + '.');
+        }
+      } else if (status === 'Saving') {
+        if (isCurrentModalJob) {
+          updateHlsProgressUI(job.totalSegments, job.totalSegments);
+          setHlsStatusUI('Saving', 0, 'Saving ' + (hlsTask ? hlsTask.fileName : '') + '…', '');
+        }
+      } else if (status === 'Completed') {
+        job.active = false;
+        job.status = 'Completed';
+        var subFolder = (job.targetFolder && job.targetFolder.isCustom && job.targetFolder.folderName && job.targetFolder.folderName !== 'Downloads')
+          ? ('Downloads/' + job.targetFolder.folderName)
+          : 'Downloads';
+        if (hlsTask) {
+          hlsTask.downloadedBytes = job.downloadedBytes;
+          hlsTask.totalBytes = job.downloadedBytes;
+          hlsTask.completedAt = formatHistoryTimestamp(new Date());
+          hlsTask.status = 'completed';
+          hlsTask.savedToDevice = true;
+          hlsTask.savedFolderName = subFolder;
+          hlsTask.realSpeedBps = 0;
+          for (var k = 0; k < hlsTask.threadProgress.length; k++) hlsTask.threadProgress[k] = 100;
+          recordCompletedItemInHistory(hlsTask);
+        }
+        persistCompletedDownloads();
+        updateDownloadCounters();
+        renderDownloadsList();
+        renderDownloadsHistoryList();
+        if (isCurrentModalJob) {
+          renderHlsCompletionSuccessScreen(hlsTask ? hlsTask.fileName : 'Video.mp4', 'MP4', job.downloadedBytes, true);
+          markHlsTaskSavedSuccess(hlsTask, hlsTask ? hlsTask.fileName : 'Video.mp4', subFolder, '');
+        }
+      }
+
+      if (STATE.activeView === 'downloads') {
+        renderDownloadsList();
+      }
+      updateDownloadCounters();
+      updateHlsMiniBanner();
+    };
 
     // Problem 1: Resumes strictly from the next segment after lastSuccessfulSegmentIndex without restarting from segment 1
     function resumeHlsDownload() {
@@ -6650,6 +6902,15 @@ body > *:not(#af-native-splash-overlay) { opacity: 0 !important; visibility: hid
       );
       showHlsModalState('hlsProgressSection');
 
+      if (job.isNativeJavaJob && window.AndroidBridge && typeof window.AndroidBridge.resumeNativeHlsJob === 'function') {
+        try {
+          if (window.AndroidBridge.resumeNativeHlsJob(job.taskId)) {
+            job.active = true;
+            return;
+          }
+        } catch (e) {}
+      }
+
       runHlsSegmentWorkers();
     }
     window.resumeHlsDownload = resumeHlsDownload;
@@ -6657,6 +6918,9 @@ body > *:not(#af-native-splash-overlay) { opacity: 0 !important; visibility: hid
     function pauseActiveHlsDownload() {
       var job = STATE.hlsJob;
       if (!job) return;
+      if (job.isNativeJavaJob && window.AndroidBridge && typeof window.AndroidBridge.pauseNativeHlsJob === 'function') {
+        try { window.AndroidBridge.pauseNativeHlsJob(job.taskId); } catch (e) {}
+      }
       job.active = false;
       job.waitingForInternet = false;
       if (window.AndroidBridge && typeof window.AndroidBridge.setBackgroundDownloadActive === 'function') {
@@ -6914,6 +7178,9 @@ body > *:not(#af-native-splash-overlay) { opacity: 0 !important; visibility: hid
     function cancelActiveHlsDownload() {
       var job = STATE.hlsJob;
       if (!job) return;
+      if (job.isNativeJavaJob && window.AndroidBridge && typeof window.AndroidBridge.cancelNativeHlsJob === 'function') {
+        try { window.AndroidBridge.cancelNativeHlsJob(job.taskId); } catch (e) {}
+      }
       job.aborted = true;
       job.active = false;
       job.status = 'Failed';
@@ -8069,7 +8336,7 @@ body > *:not(#af-native-splash-overlay) { opacity: 0 !important; visibility: hid
     var _backGuardArmed = false;
 
     function hasAnyOpenSheetOrHistory() {
-      var modalIds = ['modalDetectedMedia', 'modalHlsDownloader', 'modalDownloadSheet', 'modalFolder', 'modalTabs', 'modalShield'];
+      var modalIds = ['modalDetectedMedia', 'modalHlsDownloader', 'modalDownloadSheet', 'modalFolder', 'modalTabs', 'modalShield', 'modalLongPressMenu'];
       for (var i = 0; i < modalIds.length; i++) {
         var m = document.getElementById(modalIds[i]);
         if (m && !m.classList.contains('hidden')) return true;
