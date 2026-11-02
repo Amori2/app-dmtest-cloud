@@ -73,6 +73,57 @@ body > *:not(#af-native-splash-overlay) { opacity: 0 !important; visibility: hid
     finishSplash();
   }
   
+  function injectAppVersionBadge() {
+    if (document.getElementById('af-injected-version-badge')) return;
+    var badge = document.createElement('span');
+    badge.id = 'af-injected-version-badge';
+    badge.dir = 'ltr';
+    badge.textContent = "v2.0.0";
+    var shapeCss = "circle" === 'circle'
+      ? 'min-width:26px;height:26px;padding:0 6px;border-radius:999px;'
+      : ("circle" === 'pill' ? 'height:22px;padding:0 9px;border-radius:999px;' : 'height:23px;padding:0 8px;border-radius:7px;');
+    var baseCss = 'display:inline-flex;align-items:center;justify-content:center;font-family:monospace,sans-serif;font-weight:800;font-size:11px;line-height:1;color:#ffffff;background:#8b5cf6;border:1px solid rgba(255,255,255,0.28);box-shadow:0 2px 8px rgba(0,0,0,0.25);user-select:none;shrink:0;vertical-align:middle;' + shapeCss;
+    var pos = "title_inline";
+    if (pos.indexOf('title_') === 0) {
+      var titleEl = document.querySelector('header h1, .app-header h1, .brand-title, h1, .header-title, .app-title');
+      if (titleEl) {
+        if (pos === 'title_below') {
+          var wrap = document.createElement('div');
+          wrap.style.cssText = 'margin-top:4px;display:flex;align-items:center;';
+          badge.style.cssText = baseCss;
+          wrap.appendChild(badge);
+          titleEl.insertAdjacentElement('afterend', wrap);
+          return;
+        }
+        titleEl.style.display = 'inline-flex';
+        titleEl.style.alignItems = 'center';
+        titleEl.style.gap = '8px';
+        titleEl.style.flexWrap = 'wrap';
+        badge.style.cssText = baseCss;
+        if (pos === 'title_before') {
+          titleEl.insertBefore(badge, titleEl.firstChild);
+        } else {
+          titleEl.appendChild(badge);
+        }
+        return;
+      }
+    }
+    var fixedMap = {
+      top_left: 'position:fixed;top:12px;left:12px;z-index:2147483000;',
+      top_center: 'position:fixed;top:12px;left:50%;transform:translateX(-50%);z-index:2147483000;',
+      top_right: 'position:fixed;top:12px;right:12px;z-index:2147483000;',
+      bottom_left: 'position:fixed;bottom:14px;left:12px;z-index:2147483000;',
+      bottom_center: 'position:fixed;bottom:14px;left:50%;transform:translateX(-50%);z-index:2147483000;',
+      bottom_right: 'position:fixed;bottom:14px;right:12px;z-index:2147483000;'
+    };
+    badge.style.cssText = baseCss + (fixedMap[pos] || fixedMap.top_left);
+    document.body.appendChild(badge);
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', injectAppVersionBadge);
+  } else {
+    injectAppVersionBadge();
+  }
 })();
 </script>
   <meta charset="UTF-8" />
@@ -1547,6 +1598,8 @@ body > *:not(#af-native-splash-overlay) { opacity: 0 !important; visibility: hid
     function buildStandardStreamsForVideo(videoId, durationSec) {
       var dur = durationSec > 0 ? durationSec : 360;
       var tiers = [
+        { quality: '2160p 4K',  formatCode: '4k',   height: 2160, itag: 313, ext: 'mp4', hasAudio: false, kbps: 6500 },
+        { quality: '1440p 2K',  formatCode: '1440', height: 1440, itag: 271, ext: 'mp4', hasAudio: false, kbps: 3500 },
         { quality: '1080p FHD', formatCode: '1080', height: 1080, itag: 137, ext: 'mp4', hasAudio: false, kbps: 1800 },
         { quality: '720p HD',   formatCode: '720',  height: 720,  itag: 22,  ext: 'mp4', hasAudio: true,  kbps: 1050 },
         { quality: '480p',      formatCode: '480',  height: 480,  itag: 135, ext: 'mp4', hasAudio: false, kbps: 600  },
@@ -2647,7 +2700,7 @@ body > *:not(#af-native-splash-overlay) { opacity: 0 !important; visibility: hid
       for (var i = 0; i < STATE.scannedMediaItems.length; i++) {
         mapByUrl[STATE.scannedMediaItems[i].url] = true;
       }
-      var item = classifyMediaUrl(mediaUrl, STATE.currentPageRealTitle || pageTitle || 'Video', qualityHint || '', '');
+      var item = classifyMediaUrl(mediaUrl, STATE.currentPageRealTitle || pageTitle || 'Video', qualityHint || '', '', true);
       if (item) {
         addScannedMediaItem(item, mapByUrl);
         updateFloatingButtonVisibility();
@@ -4680,7 +4733,49 @@ body > *:not(#af-native-splash-overlay) { opacity: 0 !important; visibility: hid
     STATE.lastScannedHtml = '';
     STATE.scannerTimer = null;
 
-    function classifyMediaUrl(rawUrl, fallbackTitle, explicitQuality, explicitMimeType) {
+    function isJunkOrPreviewMediaUrl(urlStr) {
+      if (!urlStr || typeof urlStr !== 'string') return true;
+      var s = urlStr.trim();
+      // Reject broken template strings, placeholders, or very short invalid URLs
+      if (s.length < 12 || /[{}$<>\\]|undefined|null/i.test(s)) return true;
+      var lower = s.toLowerCase();
+      var pathPart = lower.split('?')[0].split('#')[0];
+      // Reject segment chunks (.ts, .m4s) and static assets
+      if (/\.(ts|m4s|aac|vtt|srt|ass|jpg|jpeg|png|gif|webp|svg|css|js|woff|woff2|ttf|ico|json|xml|txt|html|php)$/i.test(pathPart)) {
+        return true;
+      }
+      // Reject hover previews, video thumbnails, storyboards, ad bumpers, and audio-only HLS sub-tracks
+      if (/(?:^|[/_\-.])(preview|thumb|thumbnail|sprite|storyboard|hover|teaser|bumper|preroll|midroll|postroll|adclip|advideo|banner|pixel|blank|dummy|sample|favicon|logo|avatar)(?:[/_\-.]|$)/i.test(pathPart)) {
+        return true;
+      }
+      if (/\.m3u8/i.test(lower) && /(?:^|[/_\-.])(audio|aud|eng|ara|aac|ac3|subs|subtitle|captions)(?:[/_\-.]|$)/i.test(pathPart)) {
+        return true;
+      }
+      return false;
+    }
+
+    function normalizeMediaDedupeKey(rawUrl) {
+      if (!rawUrl) return '';
+      try {
+        var u = new URL(rawUrl);
+        return (u.origin + u.pathname).toLowerCase();
+      } catch (e) {
+        return String(rawUrl).split('?')[0].split('#')[0].toLowerCase();
+      }
+    }
+
+    function isLikelyMasterM3u8Url(rawUrl) {
+      if (!rawUrl || !/\.m3u8/i.test(rawUrl)) return false;
+      var pathOnly = String(rawUrl).split('?')[0].toLowerCase();
+      if (/(master|playlist|manifest|multi|mbr|adaptive)/i.test(pathOnly)) return true;
+      // If it does NOT contain a single resolution token like 240p/360p/480p/720p/1080p or chunklist/index-v1, it is likely a master playlist
+      if (!/(240p|360p|480p|540p|720p|1080p|1440p|2160p|chunklist|index-v\d|seg-|track_)/i.test(pathOnly)) {
+        return true;
+      }
+      return false;
+    }
+
+    function classifyMediaUrl(rawUrl, fallbackTitle, explicitQuality, explicitMimeType, isLivePlayerSource) {
       if (!rawUrl || typeof rawUrl !== 'string') return null;
       var trimmed = rawUrl.trim()
         .replace(/\\u002F/gi, '/')
@@ -4688,9 +4783,7 @@ body > *:not(#af-native-splash-overlay) { opacity: 0 !important; visibility: hid
         .replace(/\\\//g, '/')
         .replace(/&amp;/g, '&');
       if (!/^https?:\/\//i.test(trimmed)) return null;
-      if (/\.(jpg|jpeg|png|gif|webp|svg|css|js|woff|woff2|ttf|ico|json|xml|txt|html|php)(\?|$)/i.test(trimmed) && !/\.(mp4|webm|mkv|mp3|m4a|m3u8|mpd)/i.test(trimmed)) {
-        return null;
-      }
+      if (isJunkOrPreviewMediaUrl(trimmed)) return null;
 
       var cleanPath = trimmed.split('?')[0].split('#')[0];
       var extMatch = cleanPath.match(/\.(mp4|webm|mkv|mp3|m4a|m3u8|mpd)$/i);
@@ -4713,38 +4806,96 @@ body > *:not(#af-native-splash-overlay) { opacity: 0 !important; visibility: hid
       if (!ext) return null;
 
       var isStream = (ext === 'm3u8' || ext === 'mpd');
-      var rawFileName = cleanPath.split('/').pop() || '';
-      try { rawFileName = decodeURIComponent(rawFileName); } catch (e) {}
-      if (!rawFileName || !/\.(mp4|webm|mkv|mp3|m4a|m3u8|mpd)$/i.test(rawFileName) || rawFileName.length < 4) {
-        var cleanBase = cleanVideoTitleText(fallbackTitle) || 'Video';
-        rawFileName = cleanBase + '.' + ext;
-      }
+      var isMasterCandidate = (ext === 'm3u8' && isLikelyMasterM3u8Url(trimmed)) || ext === 'mpd';
+
+      var cleanBaseTitle = cleanVideoTitleText(STATE.currentPageRealTitle) || cleanVideoTitleText(fallbackTitle) || 'Video';
+      var rawFileName = cleanBaseTitle + '.' + ext;
 
       // Detect quality from attribute, URL, or label if available
       var quality = String(explicitQuality || '').trim();
       if (!quality) {
         var qMatch = trimmed.match(/(2160p|1440p|1080p|720p|480p|360p|240p|144p|4k|2k|320k|192k|128k)/i);
-        if (qMatch) quality = qMatch[1].toUpperCase();
-        else if (isStream) quality = 'Auto / Multi-Quality';
-        else if (ext === 'mp3' || ext === 'm4a') quality = 'Audio';
-        else quality = 'HD / Direct';
+        if (qMatch) {
+          var qTok = qMatch[1].toUpperCase();
+          quality = (qTok === '2160P' || qTok === '4K') ? '4K (2160p)' : ((qTok === '1440P' || qTok === '2K') ? '2K (1440p)' : qTok);
+        } else if (isMasterCandidate) {
+          quality = 'All Qualities (Auto / 1080p / 4K)';
+        } else if (isStream) {
+          quality = 'Stream';
+        } else if (ext === 'mp3' || ext === 'm4a') {
+          quality = 'Audio';
+        } else {
+          quality = 'HD / Direct';
+        }
       }
 
       return {
         url: trimmed,
+        dedupeKey: normalizeMediaDedupeKey(trimmed),
         fileType: ext.toUpperCase(),
         ext: ext,
         fileName: rawFileName,
         quality: quality,
-        isStream: isStream
+        isStream: isStream,
+        isMasterPlaylist: isMasterCandidate,
+        isPrimaryVideo: !!isLivePlayerSource || isMasterCandidate
       };
     }
 
     function addScannedMediaItem(item, mapByUrl) {
       if (!item || !item.url) return;
-      if (mapByUrl[item.url]) return;
+      var dKey = item.dedupeKey || normalizeMediaDedupeKey(item.url);
+      if (mapByUrl[item.url] || (dKey && mapByUrl[dKey])) return;
       mapByUrl[item.url] = true;
+      if (dKey) mapByUrl[dKey] = true;
       STATE.scannedMediaItems.push(item);
+      curateDetectedMediaItems();
+    }
+
+    // Collapses redundant HLS sub-playlists when a Master Playlist is already present and sorts Main Video to #1
+    function curateDetectedMediaItems() {
+      if (!Array.isArray(STATE.scannedMediaItems) || STATE.scannedMediaItems.length <= 1) return;
+      var list = STATE.scannedMediaItems;
+      var hasMasterM3u8 = false;
+      var hasLivePrimary = false;
+      for (var i = 0; i < list.length; i++) {
+        if (list[i].isMasterPlaylist && list[i].ext === 'm3u8') hasMasterM3u8 = true;
+        if (list[i].isPrimaryVideo) hasLivePrimary = true;
+      }
+
+      var filtered = [];
+      for (var j = 0; j < list.length; j++) {
+        var it = list[j];
+        // If we already have a Master M3U8 playlist, hide single-resolution chunklist/variant .m3u8 sub-playlists so the user isn't confused
+        if (hasMasterM3u8 && it.ext === 'm3u8' && !it.isMasterPlaylist) {
+          continue;
+        }
+        // If we have live player / primary videos, hide low-confidence static HTML regex links
+        if (hasLivePrimary && it.isLowConfidenceHtmlMatch) {
+          continue;
+        }
+        filtered.push(it);
+      }
+
+      // Refresh file names with the latest real page title if available
+      var bestTitle = cleanVideoTitleText(STATE.currentPageRealTitle);
+      if (bestTitle) {
+        for (var k = 0; k < filtered.length; k++) {
+          if (filtered[k].ext && (!filtered[k].streamRefType)) {
+            filtered[k].fileName = bestTitle + '.' + filtered[k].ext;
+          }
+        }
+      }
+
+      // Sort: Master Playlists & Primary Live Player videos first!
+      filtered.sort(function(a, b) {
+        var scoreA = (a.isMasterPlaylist ? 4 : 0) + (a.isPrimaryVideo ? 2 : 0) + (a.isStream ? 1 : 0);
+        var scoreB = (b.isMasterPlaylist ? 4 : 0) + (b.isPrimaryVideo ? 2 : 0) + (b.isStream ? 1 : 0);
+        return scoreB - scoreA;
+      });
+
+      // Keep at most the top 8 cleanest items so the user never faces 50+ confusing links
+      STATE.scannedMediaItems = filtered.slice(0, 8);
     }
 
     // Listen for live media URLs, internal tab popups, in-tab navigation, and blocked ads from browsed page iframe
@@ -4824,7 +4975,7 @@ body > *:not(#af-native-splash-overlay) { opacity: 0 !important; visibility: hid
         for (var i = 0; i < STATE.scannedMediaItems.length; i++) {
           mapByUrl[STATE.scannedMediaItems[i].url] = true;
         }
-        var item = classifyMediaUrl(data.url, STATE.currentPageRealTitle || data.title || 'Video', data.quality || '', '');
+        var item = classifyMediaUrl(data.url, STATE.currentPageRealTitle || data.title || 'Video', data.quality || '', '', true);
         if (item) {
           addScannedMediaItem(item, mapByUrl);
           updateFloatingButtonVisibility();
@@ -4963,53 +5114,23 @@ body > *:not(#af-native-splash-overlay) { opacity: 0 !important; visibility: hid
           if (cItem) addScannedMediaItem(cItem, mapByUrl);
         }
 
-        // 4b. Extract <a href="..."> direct links ending with .mp4, .webm, .mkv, .mp3, .m4a, .m3u8, .mpd
-        var linkRegex = /<a\b[^>]*?\bhref=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
-        var linkMatch;
-        while ((linkMatch = linkRegex.exec(rawHtml)) !== null) {
-          var hrefVal = linkMatch[1].replace(/&amp;/g, '&').trim();
-          if (pageUrl && !/^https?:\/\//i.test(hrefVal)) {
-            try { hrefVal = new URL(hrefVal, pageUrl).href; } catch (e) {}
-          }
-          var linkText = String(linkMatch[2] || '').replace(/<[^>]+>/g, ' ').trim();
-          var linkItem = classifyMediaUrl(hrefVal, linkText || pageTitle, '', '');
-          if (linkItem) addScannedMediaItem(linkItem, mapByUrl);
-        }
-
-        // 4c. Extract absolute media URLs (.mp4, .webm, .mkv, .mp3, .m4a, .m3u8, .mpd) found anywhere in the page HTML / scripts
+        // 4b. Extract media URLs from player scripts/configs in HTML (prioritizing .m3u8/.mpd streams and player sources, max 5 items)
         var normalizedHtml = rawHtml
           .replace(/\\u002F/gi, '/')
           .replace(/\\u0026/gi, '&')
           .replace(/\\\//g, '/')
           .replace(/&quot;/gi, '"')
           .replace(/&#39;/gi, "'");
-        var urlRegex = /https?:\/\/[^"'\s<>\\()]+?\.(?:mp4|webm|mkv|mp3|m4a|m3u8|mpd)(?:\?[^"'\s<>\\()]*)?/gi;
+        var urlRegex = /https?:\/\/[^"'\s<>\\()]+?\.(?:m3u8|mpd|mp4|webm|mkv|mp3|m4a)(?:\?[^"'\s<>\\()]*)?/gi;
         var urlMatch;
         var countFound = 0;
-        while ((urlMatch = urlRegex.exec(normalizedHtml)) !== null && countFound < 60) {
-          var foundItem = classifyMediaUrl(urlMatch[0], pageTitle, '', '');
+        while ((urlMatch = urlRegex.exec(normalizedHtml)) !== null && countFound < 6) {
+          var foundItem = classifyMediaUrl(urlMatch[0], pageTitle, '', '', false);
           if (foundItem) {
+            // Mark non-stream regex matches from raw HTML as low confidence so they don't clutter live player streams
+            if (!foundItem.isMasterPlaylist) foundItem.isLowConfidenceHtmlMatch = true;
             addScannedMediaItem(foundItem, mapByUrl);
             countFound++;
-          }
-        }
-
-        // 4d. Extract relative media URLs in quotes (e.g. "/media/video.mp4" or "streams/master.m3u8") and resolve against pageUrl
-        if (pageUrl && /^https?:\/\//i.test(pageUrl)) {
-          var relRegex = /["']((?:\/|\.\.\/|\.\/|[a-zA-Z0-9_\-]+\/)[^"'\s<>\\]+?\.(?:mp4|webm|mkv|mp3|m4a|m3u8|mpd)(?:\?[^"'\s<>\\]*)?)["']/gi;
-          var relMatch;
-          var relCount = 0;
-          while ((relMatch = relRegex.exec(normalizedHtml)) !== null && relCount < 30) {
-            var relCandidate = relMatch[1];
-            if (/^https?:\/\//i.test(relCandidate) || /^\/\//.test(relCandidate)) continue;
-            try {
-              var absCandidate = new URL(relCandidate, pageUrl).href;
-              var relItem = classifyMediaUrl(absCandidate, pageTitle, '', '');
-              if (relItem) {
-                addScannedMediaItem(relItem, mapByUrl);
-                relCount++;
-              }
-            } catch (e) {}
           }
         }
       }
@@ -5128,7 +5249,9 @@ body > *:not(#af-native-splash-overlay) { opacity: 0 !important; visibility: hid
         if (onFirstHtmlCallback) onFirstHtmlCallback('');
         return;
       }
-      STATE.scannedMediaItems = [];
+      if (!hasNativeBrowserBridge()) {
+        STATE.scannedMediaItems = [];
+      }
       STATE.lastScannedHtml = '';
       scanCurrentPageMedia('', url);
 
@@ -5194,7 +5317,10 @@ body > *:not(#af-native-splash-overlay) { opacity: 0 !important; visibility: hid
       var html = '';
       for (var i = 0; i < items.length; i++) {
         var it = items[i];
-        // Show File type and mark .m3u8 / .mpd as "Stream"
+        // Highlight #1 Main Video & mark .m3u8 / .mpd as "Stream"
+        var primaryBadge = (i === 0 || it.isMasterPlaylist)
+          ? '<span class="px-2 py-0.5 rounded bg-amber-500 text-black text-[10px] font-extrabold">★ الفيديو الرئيسي</span>'
+          : '';
         var streamBadge = it.isStream
           ? '<span class="px-2 py-0.5 rounded bg-purple-500/20 text-purple-400 text-[10px] font-extrabold">Stream</span>'
           : '';
@@ -5213,6 +5339,7 @@ body > *:not(#af-native-splash-overlay) { opacity: 0 !important; visibility: hid
         html += '<div class="surface-input rounded-2xl p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5" dir="ltr">' +
           '<div class="min-w-0 flex-1 space-y-1">' +
             '<div class="flex flex-wrap items-center gap-1.5">' +
+              primaryBadge +
               streamBadge +
               typeBadge +
               qualityBadge +
@@ -5801,13 +5928,39 @@ body > *:not(#af-native-splash-overlay) { opacity: 0 !important; visibility: hid
       }
 
       var lines = text.split(/\r?\n/);
-      var isMaster = /#EXT-X-STREAM-INF/i.test(text);
+      var isMaster = /#EXT-X-STREAM-INF|#EXT-X-MEDIA:.*TYPE=VIDEO/i.test(text);
 
       if (isMaster) {
         var variants = [];
         var seenVariantKeys = {};
         for (var i = 0; i < lines.length; i++) {
           var l = lines[i].trim();
+          // Also support #EXT-X-MEDIA:TYPE=VIDEO renditions with URI="..." (often used for 4K / 2160p tracks)
+          if (l.indexOf('#EXT-X-MEDIA:') === 0 && /TYPE=VIDEO/i.test(l) && /URI=["']([^"']+)["']/i.test(l)) {
+            var mUriMatch = l.match(/URI=["']([^"']+)["']/i);
+            var mNameMatch = l.match(/NAME=["']([^"']+)["']/i) || l.match(/GROUP-ID=["']([^"']+)["']/i);
+            var mUri = mUriMatch ? resolveHlsUrl(mUriMatch[1], baseUrl) : '';
+            var mName = mNameMatch ? mNameMatch[1].trim() : '';
+            var mHeight = inferQualityHeightFromText(mName) || inferQualityHeightFromText(mUri);
+            if (mUri && (mHeight > 0 || mName)) {
+              var mKey = mUri + '|' + mHeight + '|0|' + mName;
+              if (!seenVariantKeys[mKey]) {
+                seenVariantKeys[mKey] = true;
+                var mShort = formatHeightQualityShort(mHeight, mName, 0);
+                variants.push({
+                  label: (mHeight >= 2160 ? '4K • 2160p' : (mHeight > 0 ? (mHeight + 'p') : mName)),
+                  qualityShort: mShort,
+                  height: mHeight,
+                  width: 0,
+                  bandwidth: 0,
+                  codecs: '',
+                  name: mName,
+                  url: mUri
+                });
+              }
+            }
+            continue;
+          }
           if (l.indexOf('#EXT-X-STREAM-INF') === 0) {
             var resMatch = l.match(/RESOLUTION=["']?(\d+)\s*x\s*(\d+)["']?/i);
             var bwMatch = l.match(/(?:^|,)BANDWIDTH=(\d+)/i) || l.match(/AVERAGE-BANDWIDTH=(\d+)/i);
@@ -5839,9 +5992,13 @@ body > *:not(#af-native-splash-overlay) { opacity: 0 !important; visibility: hid
             }
 
             if (nextUri) {
+              if (width >= 3200 && height < 2160) height = 2160;
+              else if (width >= 2400 && height < 1440) height = 1440;
               if (height === 0) {
                 height = inferQualityHeightFromText(rawName) || inferQualityHeightFromText(nextUri);
               }
+              if (height === 0 && bw >= 12000000) height = 2160;
+              else if (height === 0 && bw >= 6500000) height = 1440;
               var qShort = formatHeightQualityShort(height, rawName, bw);
               var dedupKey = nextUri + '|' + height + '|' + bw + '|' + rawName;
               if (!seenVariantKeys[dedupKey]) {
@@ -6502,6 +6659,9 @@ body > *:not(#af-native-splash-overlay) { opacity: 0 !important; visibility: hid
       if (!job) return;
       job.active = false;
       job.waitingForInternet = false;
+      if (window.AndroidBridge && typeof window.AndroidBridge.setBackgroundDownloadActive === 'function') {
+        try { window.AndroidBridge.setBackgroundDownloadActive(false); } catch (e) {}
+      }
       if (job.abortControllers) {
         for (var i = 0; i < job.abortControllers.length; i++) {
           try { job.abortControllers[i].abort(); } catch (e) {}
@@ -6560,6 +6720,9 @@ body > *:not(#af-native-splash-overlay) { opacity: 0 !important; visibility: hid
       }
 
       job.active = true;
+      if (window.AndroidBridge && typeof window.AndroidBridge.setBackgroundDownloadActive === 'function') {
+        try { window.AndroidBridge.setBackgroundDownloadActive(true); } catch (e) {}
+      }
       var masterCtrl = new AbortController();
       job.abortControllers = [masterCtrl];
       if (hlsTask) hlsTask.abortControllers = [masterCtrl];
@@ -6607,10 +6770,20 @@ body > *:not(#af-native-splash-overlay) { opacity: 0 !important; visibility: hid
 
               updateHlsProgressUI(job.downloadedSegments, total);
 
-              // Yield to browser event loop so UI never freezes
-              return new Promise(function(resolve) {
-                setTimeout(resolve, 0);
-              }).then(nextSegmentStep);
+              if (window.AndroidBridge && typeof window.AndroidBridge.updateTimerNotification === 'function') {
+                try {
+                  var livePct = Math.min(99, Math.round((job.downloadedSegments / total) * 100));
+                  window.AndroidBridge.updateTimerNotification(
+                    'جاري التحميل (' + livePct + '%)',
+                    job.downloadedSegments + ' / ' + total,
+                    job.baseTitle || 'Video',
+                    true
+                  );
+                } catch (e) {}
+              }
+
+              // Use unthrottled microtask Promise so switching to another app NEVER pauses segment downloading!
+              return Promise.resolve().then(nextSegmentStep);
             })
             .catch(function() {
               if (job.aborted || !job.active || workerStoppedOnError) return;
@@ -7318,8 +7491,76 @@ body > *:not(#af-native-splash-overlay) { opacity: 0 !important; visibility: hid
         });
     }
 
+    // Streams a Blob in 512 KB chunks to AndroidBridge (beginSaveFile -> appendSaveFileChunk -> finishSaveFile)
+    // Uses MediaStore.Downloads on Android 10-14 so large 1080p/4K videos NEVER hit OutOfMemoryError or EACCES!
+    function saveBlobViaChunkedAndroidBridge(blob, fileName, mimeType, subFolder) {
+      var bridge = window.AndroidBridge || null;
+      if (!bridge || typeof bridge.beginSaveFile !== 'function' || typeof bridge.appendSaveFileChunk !== 'function' || typeof bridge.finishSaveFile !== 'function') {
+        return Promise.resolve({ supported: false, ok: false, error: '' });
+      }
+      return new Promise(function(resolve) {
+        try {
+          var sessionId = bridge.beginSaveFile(fileName);
+          if (!sessionId) {
+            return resolve({ supported: true, ok: false, error: 'Could not open temp file' });
+          }
+          var chunkSize = 512 * 1024; // 512 KB per chunk
+          var totalSize = blob.size;
+          var offset = 0;
+
+          function writeNextChunk() {
+            if (offset >= totalSize) {
+              try {
+                var finalRes = String(bridge.finishSaveFile(sessionId, fileName, mimeType, subFolder || '') || '');
+                if (finalRes.indexOf('OK:') === 0) {
+                  return resolve({ supported: true, ok: true, savedPath: finalRes.slice(3) });
+                }
+                return resolve({ supported: true, ok: false, error: finalRes });
+              } catch (errFin) {
+                return resolve({ supported: true, ok: false, error: String(errFin) });
+              }
+            }
+            var end = Math.min(offset + chunkSize, totalSize);
+            var sliceBlob = blob.slice(offset, end);
+            offset = end;
+
+            var reader = new FileReader();
+            reader.onloadend = function() {
+              var dataUrl = String(reader.result || '');
+              var comma = dataUrl.indexOf(',');
+              var b64 = comma >= 0 ? dataUrl.slice(comma + 1) : dataUrl;
+              var wroteOk = false;
+              try {
+                wroteOk = !!bridge.appendSaveFileChunk(sessionId, b64);
+              } catch (eWrite) {
+                wroteOk = false;
+              }
+              if (!wroteOk) {
+                return resolve({ supported: true, ok: false, error: 'Chunk write failed' });
+              }
+              Promise.resolve().then(writeNextChunk);
+            };
+            reader.onerror = function() {
+              resolve({ supported: true, ok: false, error: 'Chunk read failed' });
+            };
+            reader.readAsDataURL(sliceBlob);
+          }
+
+          writeNextChunk();
+        } catch (e) {
+          resolve({ supported: true, ok: false, error: String(e) });
+        }
+      });
+    }
+
     // Follows the exact folder-permission-aware saving flow and updates UI with real status messages
     function executeVerifiedHlsSave(blob, fileObj, fileName, mimeType, hlsTask, explicitTargetFolder, onCompleteCallback) {
+      if (window.AndroidBridge && typeof window.AndroidBridge.setBackgroundDownloadActive === 'function') {
+        try { window.AndroidBridge.setBackgroundDownloadActive(false); } catch (e) {}
+      }
+      if (window.AndroidBridge && typeof window.AndroidBridge.updateTimerNotification === 'function') {
+        try { window.AndroidBridge.updateTimerNotification('', '00:00', '', false); } catch (e) {}
+      }
       if (!blob || blob.size === 0) {
         updateHlsSavingStatusUI('Saving failed', 'Merged file is empty or unavailable.', false, true, false);
         notify('Saving failed');
@@ -7367,6 +7608,26 @@ body > *:not(#af-native-splash-overlay) { opacity: 0 !important; visibility: hid
               : 'Could not save to the selected folder. Please choose another folder.';
             updateHlsSavingStatusUI('Saving failed', eaccesMsg, false, true, true);
             notify(eaccesMsg);
+            if (typeof onCompleteCallback === 'function') onCompleteCallback(false, '');
+          }
+        });
+        return;
+      }
+
+      // Step 0.5: If running in App Factory V5 APK with chunked MediaStore.Downloads bridge, stream in 512KB chunks (Zero OOM, 100% verified save!)
+      if (window.AndroidBridge && typeof window.AndroidBridge.beginSaveFile === 'function') {
+        var subFolderName = (targetFolder && targetFolder.isCustom && targetFolder.folderName && targetFolder.folderName !== 'Downloads')
+          ? targetFolder.folderName
+          : '';
+        var destDisplay = subFolderName ? ('Downloads/' + subFolderName) : 'Downloads';
+        updateHlsSavingStatusUI('Saving to device…', 'Saving ' + fileName + ' to ' + destDisplay + '…', false, false, false);
+        saveBlobViaChunkedAndroidBridge(blob, fileName, finalMime, subFolderName).then(function(chunkRes) {
+          if (chunkRes && chunkRes.ok) {
+            markHlsTaskSavedSuccess(hlsTask, fileName, destDisplay, '');
+            if (typeof onCompleteCallback === 'function') onCompleteCallback(true, destDisplay);
+          } else {
+            updateHlsSavingStatusUI('Saving failed', chunkRes.error || 'Could not write file to storage.', false, true, true);
+            notify('Saving failed: ' + (chunkRes.error || 'Please try again'));
             if (typeof onCompleteCallback === 'function') onCompleteCallback(false, '');
           }
         });
